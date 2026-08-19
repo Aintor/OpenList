@@ -27,8 +27,11 @@ elif [ "$1" = "beta" ]; then
 else
   git tag -d beta || true
   # Always true if there's no tag
-  version=$(git describe --abbrev=0 --tags 2>/dev/null || echo "v0.0.0")
-  webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/$frontendRepo/releases/latest\"" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')
+  version=$(git describe --abbrev=0 --tags 2>/dev/null || echo "$gitCommit")
+  webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/$frontendRepo/releases/latest\"" 2>/dev/null | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || echo "")
+  if [ -z "$webVersion" ]; then
+    webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/latest\"" 2>/dev/null | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || echo "rolling")
+  fi
 fi
 
 echo "backend version: $version"
@@ -97,7 +100,11 @@ AssertStaticBinary() {
 }
 
 FetchWebRolling() {
-  pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/tags/rolling\"")
+  pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/tags/rolling\"" 2>/dev/null || echo "")
+  if [ -z "$pre_release_json" ] || echo "$pre_release_json" | grep -q "Not Found"; then
+    echo "Warning: Failed to fetch rolling release from $frontendRepo, falling back to OpenListTeam/OpenList-Frontend"
+    pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/tags/rolling\"")
+  fi
   pre_release_assets=$(echo "$pre_release_json" | jq -r '.assets[].browser_download_url')
   
   # There is no lite for rolling
@@ -110,7 +117,11 @@ FetchWebRolling() {
 }
 
 FetchWebRelease() {
-  release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/latest\"")
+  release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/latest\"" 2>/dev/null || echo "")
+  if [ -z "$release_json" ] || echo "$release_json" | grep -q "Not Found"; then
+    echo "Warning: Failed to fetch latest release from $frontendRepo, falling back to OpenListTeam/OpenList-Frontend"
+    release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/latest\"")
+  fi
   release_assets=$(echo "$release_json" | jq -r '.assets[].browser_download_url')
   
   if [ "$useLite" = true ]; then
