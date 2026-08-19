@@ -227,7 +227,23 @@ BuildDocker() {
 PrepareBuildDockerMusl() {
   mkdir -p build/musl-libs
   BASE="https://github.com/OpenListTeam/musl-compilers/releases/latest/download/"
-  FILES=(x86_64-linux-musl-cross aarch64-linux-musl-cross i486-linux-musl-cross armv6-linux-musleabihf-cross armv7l-linux-musleabihf-cross riscv64-linux-musl-cross powerpc64le-linux-musl-cross loongarch64-linux-musl-cross) ## Disable s390x-linux-musl-cross builds
+  FILES=(x86_64-linux-musl-cross aarch64-linux-musl-cross i486-linux-musl-cross armv6-linux-musleabihf-cross armv7l-linux-musleabihf-cross riscv64-linux-musl-cross powerpc64le-linux-musl-cross loongarch64-linux-musl-cross)
+  if [ -n "$DOCKER_BUILD_PLATFORMS" ]; then
+    NEW_FILES=()
+    for plat in $DOCKER_BUILD_PLATFORMS; do
+      case "$plat" in
+        linux-amd64) NEW_FILES+=(x86_64-linux-musl-cross) ;;
+        linux-arm64) NEW_FILES+=(aarch64-linux-musl-cross) ;;
+        linux-386) NEW_FILES+=(i486-linux-musl-cross) ;;
+        linux-riscv64) NEW_FILES+=(riscv64-linux-musl-cross) ;;
+        linux-ppc64le) NEW_FILES+=(powerpc64le-linux-musl-cross) ;;
+        linux-loong64) NEW_FILES+=(loongarch64-linux-musl-cross) ;;
+        linux-arm/v6) NEW_FILES+=(armv6-linux-musleabihf-cross) ;;
+        linux-arm/v7) NEW_FILES+=(armv7l-linux-musleabihf-cross) ;;
+      esac
+    done
+    FILES=("${NEW_FILES[@]}")
+  fi
   for i in "${FILES[@]}"; do
     url="${BASE}${i}.tgz"
     lib_tgz="build/${i}.tgz"
@@ -246,8 +262,24 @@ BuildDockerMultiplatform() {
   docker_lflags="$(GetMuslStaticLdflags)"
   export CGO_ENABLED=1
 
-  OS_ARCHES=(linux-amd64 linux-arm64 linux-386 linux-riscv64 linux-ppc64le linux-loong64) ## Disable linux-s390x builds
-  CGO_ARGS=(x86_64-linux-musl-gcc aarch64-linux-musl-gcc i486-linux-musl-gcc riscv64-linux-musl-gcc powerpc64le-linux-musl-gcc loongarch64-linux-musl-gcc) ## Disable s390x-linux-musl-gcc builds
+  OS_ARCHES=(linux-amd64 linux-arm64 linux-386 linux-riscv64 linux-ppc64le linux-loong64)
+  CGO_ARGS=(x86_64-linux-musl-gcc aarch64-linux-musl-gcc i486-linux-musl-gcc riscv64-linux-musl-gcc powerpc64le-linux-musl-gcc loongarch64-linux-musl-gcc)
+  
+  if [ -n "$DOCKER_BUILD_PLATFORMS" ]; then
+    NEW_OS_ARCHES=()
+    NEW_CGO_ARGS=()
+    for plat in $DOCKER_BUILD_PLATFORMS; do
+      for idx in "${!OS_ARCHES[@]}"; do
+        if [ "${OS_ARCHES[$idx]}" = "$plat" ]; then
+          NEW_OS_ARCHES+=("${OS_ARCHES[$idx]}")
+          NEW_CGO_ARGS+=("${CGO_ARGS[$idx]}")
+        fi
+      done
+    done
+    OS_ARCHES=("${NEW_OS_ARCHES[@]}")
+    CGO_ARGS=("${NEW_CGO_ARGS[@]}")
+  fi
+
   for i in "${!OS_ARCHES[@]}"; do
     os_arch=${OS_ARCHES[$i]}
     cgo_cc=${CGO_ARGS[$i]}
@@ -263,13 +295,32 @@ BuildDockerMultiplatform() {
   done
 
   DOCKER_ARM_ARCHES=(linux-arm/v6 linux-arm/v7)
-  CGO_ARGS=(armv6-linux-musleabihf-gcc armv7l-linux-musleabihf-gcc)
+  CGO_ARGS_ARM=(armv6-linux-musleabihf-gcc armv7l-linux-musleabihf-gcc)
   GO_ARM=(6 7)
+  
+  if [ -n "$DOCKER_BUILD_PLATFORMS" ]; then
+    NEW_ARM_ARCHES=()
+    NEW_CGO_ARGS_ARM=()
+    NEW_GO_ARM=()
+    for plat in $DOCKER_BUILD_PLATFORMS; do
+      for idx in "${!DOCKER_ARM_ARCHES[@]}"; do
+        if [ "${DOCKER_ARM_ARCHES[$idx]}" = "$plat" ]; then
+          NEW_ARM_ARCHES+=("${DOCKER_ARM_ARCHES[$idx]}")
+          NEW_CGO_ARGS_ARM+=("${CGO_ARGS_ARM[$idx]}")
+          NEW_GO_ARM+=("${GO_ARM[$idx]}")
+        fi
+      done
+    done
+    DOCKER_ARM_ARCHES=("${NEW_ARM_ARCHES[@]}")
+    CGO_ARGS_ARM=("${NEW_CGO_ARGS_ARM[@]}")
+    GO_ARM=("${NEW_GO_ARM[@]}")
+  fi
+
   export GOOS=linux
   export GOARCH=arm
   for i in "${!DOCKER_ARM_ARCHES[@]}"; do
     docker_arch=${DOCKER_ARM_ARCHES[$i]}
-    cgo_cc=${CGO_ARGS[$i]}
+    cgo_cc=${CGO_ARGS_ARM[$i]}
     export GOARM=${GO_ARM[$i]}
     export CC=${cgo_cc}
     echo "building for $docker_arch"
