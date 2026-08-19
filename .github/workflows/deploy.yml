@@ -1,0 +1,118 @@
+name: Build & Deploy to Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: openlist-aintor
+  ARTIFACT_NAME: 'binaries_docker_release'
+
+jobs:
+  build_binary:
+    name: Build Go Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Cache Musl
+        id: cache-musl
+        uses: actions/cache@v4
+        with:
+          path: build/musl-libs
+          key: docker-musl-libs-v2
+
+      - name: Download Musl Library
+        if: steps.cache-musl.outputs.cache-hit != 'true'
+        run: bash build.sh prepare docker-multiplatform
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Go Binary (Release)
+        run: bash build.sh release docker-multiplatform
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          overwrite: true
+          path: |
+            build/
+            !build/*.tgz
+            !build/musl-libs/**
+
+  release_docker_and_deploy:
+    needs: build_binary
+    name: Build Image & Direct Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: 'build/'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Local Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:latest
+          platforms: linux/amd64
+          build-args: |
+            BASE_IMAGE_TAG=base
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Custom build of OpenList by Aintor
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Save Docker Image to Tarball
+        run: |
+          docker save ${{ env.IMAGE_NAME }}:latest | gzip > ${{ env.IMAGE_NAME }}.tar.gz
+
+      - name: Copy Tarball to Server via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "${{ env.IMAGE_NAME }}.tar.gz"
+          target: "${{ vars.DEPLOY_PATH }}"
+
+      - name: Load Image and Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            if [ -z "${{ vars.DEPLOY_PATH }}" ]; then
+              echo "Error: DEPLOY_PATH variable is not set."
+              exit 1
+            fi
+            cd "${{ vars.DEPLOY_PATH }}"
+            docker load -i ${{ env.IMAGE_NAME }}.tar.gz
+            rm ${{ env.IMAGE_NAME }}.tar.gz
+            docker compose up -d --remove-orphans
+            docker image prune -f
