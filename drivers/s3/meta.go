@@ -24,6 +24,13 @@ type Addition struct {
 	EnableDirectUpload       bool   `json:"enable_direct_upload" default:"false"`
 	DirectUploadHost         string `json:"direct_upload_host" required:"false"`
 	UserAgent                string `json:"user_agent" required:"false" default:"" help:"Custom User-Agent for S3 requests."`
+	Thumbnail                bool   `json:"thumbnail" default:"false" help:"Enable thumbnail generation"`
+	ThumbQueryKey            string `json:"thumb_query_key" default:"x-oss-process" help:"Query parameter key for thumbnail processing"`
+	ThumbQueryValue          string `json:"thumb_query_value" default:"video/snapshot,t_1000,f_jpg,w_300,h_200,m_fast" help:"Query parameter value for video thumbnail"`
+	ImageThumbValue          string `json:"image_thumb_value" default:"image/resize,w_300/format,jpg" help:"Query parameter value for image thumbnail"`
+	EsaAuthType              string `json:"esa_auth_type" type:"select" options:"none,type_a,type_b,type_c" default:"none" help:"Aliyun ESA URL Authentication Type"`
+	EsaPrivateKey            string `json:"esa_private_key" help:"Aliyun ESA URL Authentication Private Key"`
+	EsaExpireTime            int    `json:"esa_expire_time" type:"number" default:"3600" help:"Aliyun ESA URL Authentication Expiry Duration (seconds)"`
 }
 
 func init() {

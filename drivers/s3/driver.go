@@ -3,6 +3,8 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	stdpath "path"
@@ -81,9 +83,9 @@ func (d *S3) Drop(ctx context.Context) error {
 
 func (d *S3) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
 	if d.ListObjectVersion == "v2" {
-		return d.listV2(dir.GetPath(), args)
+		return d.listV2(ctx, dir.GetPath(), args)
 	}
-	return d.listV1(dir.GetPath(), args)
+	return d.listV1(ctx, dir.GetPath(), args)
 }
 
 func (d *S3) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
@@ -107,6 +109,24 @@ func (d *S3) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*mo
 	if req == nil {
 		return nil, fmt.Errorf("failed to create GetObject request")
 	}
+
+	if args.Type == "thumb" && d.ThumbQueryKey != "" {
+		ext := strings.ToLower(utils.Ext(fileName))
+		isImg := utils.SliceContains([]string{"jpg", "jpeg", "png", "gif", "webp", "bmp"}, ext)
+		isVid := utils.SliceContains([]string{"mp4", "mkv", "avi", "mov", "flv", "webm", "3gp", "wmv"}, ext)
+		var val string
+		if isImg {
+			val = d.ImageThumbValue
+		} else if isVid {
+			val = d.ThumbQueryValue
+		}
+		if val != "" {
+			q := req.HTTPRequest.URL.Query()
+			q.Set(d.ThumbQueryKey, val)
+			req.HTTPRequest.URL.RawQuery = q.Encode()
+		}
+	}
+
 	var link model.Link
 	var err error
 	if d.CustomHost != "" {
@@ -153,6 +173,7 @@ func (d *S3) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*mo
 	if err != nil {
 		return nil, err
 	}
+	link.URL = d.signEsaUrl(link.URL)
 	return &link, nil
 }
 
@@ -325,3 +346,56 @@ func (d *S3) Get(ctx context.Context, path string) (model.Obj, error) {
 
 var _ driver.Driver = (*S3)(nil)
 var _ driver.Getter = (*S3)(nil)
+
+func (d *S3) signEsaUrl(rawUrl string) string {
+	if d.EsaAuthType == "none" || d.EsaAuthType == "" || d.EsaPrivateKey == "" {
+		return rawUrl
+	}
+
+	u, err := url.Parse(rawUrl)
+	if err != nil {
+		return rawUrl
+	}
+
+	uri := u.Path
+	if !strings.HasPrefix(uri, "/") {
+		uri = "/" + uri
+	}
+
+	now := time.Now().Unix()
+
+	switch d.EsaAuthType {
+	case "type_a":
+		timestamp := now
+		randVal := "0"
+		uid := "0"
+		signStr := fmt.Sprintf("%s-%d-%s-%s-%s", uri, timestamp, randVal, uid, d.EsaPrivateKey)
+		hashBytes := md5.Sum([]byte(signStr))
+		signature := hex.EncodeToString(hashBytes[:])
+
+		q := u.Query()
+		q.Set("auth_key", fmt.Sprintf("%d-%s-%s-%s", timestamp, randVal, uid, signature))
+		u.RawQuery = q.Encode()
+		return u.String()
+
+	case "type_b":
+		timestamp := time.Unix(now, 0).Format("200601021504")
+		signStr := fmt.Sprintf("%s%s%s", d.EsaPrivateKey, timestamp, uri)
+		hashBytes := md5.Sum([]byte(signStr))
+		signature := hex.EncodeToString(hashBytes[:])
+
+		u.Path = fmt.Sprintf("/%s/%s%s", timestamp, signature, uri)
+		return u.String()
+
+	case "type_c":
+		timestamp := fmt.Sprintf("%08x", now)
+		signStr := fmt.Sprintf("%s%s%s", d.EsaPrivateKey, uri, timestamp)
+		hashBytes := md5.Sum([]byte(signStr))
+		signature := hex.EncodeToString(hashBytes[:])
+
+		u.Path = fmt.Sprintf("/%s/%s%s", signature, timestamp, uri)
+		return u.String()
+	}
+
+	return rawUrl
+}

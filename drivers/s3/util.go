@@ -11,7 +11,9 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/sign"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/OpenListTeam/OpenList/v4/server/common"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -111,7 +113,25 @@ func getPlaceholderName(placeholder string) string {
 	return placeholder
 }
 
-func (d *S3) listV1(dirPath string, args model.ListArgs) ([]model.Obj, error) {
+func (d *S3) wrapWithThumb(ctx context.Context, dirPath string, name string, rawFile *model.Object) model.Obj {
+	if d.Thumbnail {
+		ext := strings.ToLower(utils.Ext(name))
+		isImg := utils.SliceContains([]string{"jpg", "jpeg", "png", "gif", "webp", "bmp"}, ext)
+		isVid := utils.SliceContains([]string{"mp4", "mkv", "avi", "mov", "flv", "webm", "3gp", "wmv"}, ext)
+		if isImg || isVid {
+			thumbUrl := common.GetApiUrl(ctx) + path.Join("/d", dirPath, name)
+			thumbUrl = utils.EncodePath(thumbUrl, true)
+			thumbUrl += "?type=thumb&sign=" + sign.Sign(path.Join(dirPath, name))
+			return &model.ObjThumb{
+				Object:    *rawFile,
+				Thumbnail: model.Thumbnail{Thumbnail: thumbUrl},
+			}
+		}
+	}
+	return rawFile
+}
+
+func (d *S3) listV1(ctx context.Context, dirPath string, args model.ListArgs) ([]model.Obj, error) {
 	prefix := getKey(dirPath, true)
 	log.Debugf("list: %s", prefix)
 	files := make([]model.Obj, 0)
@@ -123,7 +143,7 @@ func (d *S3) listV1(dirPath string, args model.ListArgs) ([]model.Obj, error) {
 			Prefix:    &prefix,
 			Delimiter: aws.String("/"),
 		}
-		listObjectsResult, err := d.client.ListObjects(input)
+		listObjectsResult, err := d.client.ListObjectsWithContext(ctx, input)
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +168,7 @@ func (d *S3) listV1(dirPath string, args model.ListArgs) ([]model.Obj, error) {
 				Size:     *object.Size,
 				Modified: *object.LastModified,
 			}
-			files = append(files, &file)
+			files = append(files, d.wrapWithThumb(ctx, dirPath, name, &file))
 		}
 		if listObjectsResult.IsTruncated == nil {
 			return nil, errors.New("IsTruncated nil")
@@ -162,7 +182,7 @@ func (d *S3) listV1(dirPath string, args model.ListArgs) ([]model.Obj, error) {
 	return files, nil
 }
 
-func (d *S3) listV2(dirPath string, args model.ListArgs) ([]model.Obj, error) {
+func (d *S3) listV2(ctx context.Context, dirPath string, args model.ListArgs) ([]model.Obj, error) {
 	prefix := getKey(dirPath, true)
 	files := make([]model.Obj, 0)
 	var continuationToken, startAfter *string
@@ -174,7 +194,7 @@ func (d *S3) listV2(dirPath string, args model.ListArgs) ([]model.Obj, error) {
 			Delimiter:         aws.String("/"),
 			StartAfter:        startAfter,
 		}
-		listObjectsResult, err := d.client.ListObjectsV2(input)
+		listObjectsResult, err := d.client.ListObjectsV2WithContext(ctx, input)
 		if err != nil {
 			return nil, err
 		}
@@ -203,7 +223,7 @@ func (d *S3) listV2(dirPath string, args model.ListArgs) ([]model.Obj, error) {
 				Size:     *object.Size,
 				Modified: *object.LastModified,
 			}
-			files = append(files, &file)
+			files = append(files, d.wrapWithThumb(ctx, dirPath, name, &file))
 		}
 		if !aws.BoolValue(listObjectsResult.IsTruncated) {
 			break

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -211,5 +212,47 @@ func writeTestXML(t *testing.T, w http.ResponseWriter, body string) {
 	w.Header().Set("Content-Type", "application/xml")
 	if _, err := io.WriteString(w, body); err != nil {
 		t.Errorf("write response: %v", err)
+	}
+}
+
+func TestSignEsaUrl(t *testing.T) {
+	d := &S3{
+		Addition: Addition{
+			EsaAuthType:   "type_a",
+			EsaPrivateKey: "secret",
+			EsaExpireTime: 3600,
+		},
+	}
+
+	// 1. Test Type A
+	urlStr := "https://example.com/video.mp4"
+	signed := d.signEsaUrl(urlStr)
+	if !strings.Contains(signed, "auth_key=") {
+		t.Errorf("Type A signed URL missing auth_key: %s", signed)
+	}
+
+	// 2. Test Type B
+	d.EsaAuthType = "type_b"
+	signedB := d.signEsaUrl(urlStr)
+	uB, _ := url.Parse(signedB)
+	parts := strings.Split(strings.TrimPrefix(uB.Path, "/"), "/")
+	if len(parts) < 3 {
+		t.Errorf("Type B signed URL path invalid: %s", signedB)
+	}
+
+	// 3. Test Type C
+	d.EsaAuthType = "type_c"
+	signedC := d.signEsaUrl(urlStr)
+	uC, _ := url.Parse(signedC)
+	partsC := strings.Split(strings.TrimPrefix(uC.Path, "/"), "/")
+	if len(partsC) < 3 {
+		t.Errorf("Type C signed URL path invalid: %s", signedC)
+	}
+
+	// 4. Test None
+	d.EsaAuthType = "none"
+	signedNone := d.signEsaUrl(urlStr)
+	if signedNone != urlStr {
+		t.Errorf("Expected unsigned URL to match raw URL: %s vs %s", signedNone, urlStr)
 	}
 }
