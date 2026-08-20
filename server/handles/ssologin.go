@@ -46,6 +46,10 @@ func verifyState(clientID, ip, state string) bool {
 	return ok && value == ip
 }
 
+func SetStateCache(c cache.ICache[string]) {
+	stateCache = c
+}
+
 func ssoRedirectUri(c *gin.Context, useCompatibility bool, method string) string {
 	if useCompatibility {
 		return common.GetApiUrl(c) + "/api/auth/" + method

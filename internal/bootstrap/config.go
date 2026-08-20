@@ -164,6 +164,7 @@ func InitConfig() {
 
 	// Validate and display proxy configuration status
 	validateProxyConfig()
+	validateRedisConfig()
 
 	base.InitClient()
 	initURL()
@@ -213,5 +214,18 @@ func validateProxyConfig() {
 		} else {
 			log.Errorf("Invalid proxy address format: %s, error: %v", conf.Conf.ProxyAddress, err)
 		}
+	}
+}
+
+// validateRedisConfig validates Redis configuration at startup if enabled
+func validateRedisConfig() {
+	if conf.Conf.Redis.Enable {
+		if conf.Conf.Redis.Host == "" {
+			log.Fatalf("Redis configuration error: host cannot be empty when Redis cache is enabled")
+		}
+		if conf.Conf.Redis.Port <= 0 || conf.Conf.Redis.Port > 65535 {
+			log.Fatalf("Redis configuration error: invalid port %d", conf.Conf.Redis.Port)
+		}
+		log.Infof("Redis cache enabled: %s:%d (db %d)", conf.Conf.Redis.Host, conf.Conf.Redis.Port, conf.Conf.Redis.DB)
 	}
 }

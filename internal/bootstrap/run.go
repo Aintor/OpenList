@@ -32,6 +32,7 @@ import (
 func Init() {
 	InitConfig()
 	Log()
+	InitCache()
 	InitDB()
 	data.InitData()
 	InitStreamLimit()

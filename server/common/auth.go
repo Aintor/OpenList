@@ -76,3 +76,7 @@ func IsTokenInvalidated(tokenString string) bool {
 	_, ok := validTokenCache.Get(tokenString)
 	return !ok
 }
+
+func SetValidTokenCache(c cache.ICache[bool]) {
+	validTokenCache = c
+}

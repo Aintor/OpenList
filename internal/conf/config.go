@@ -110,6 +110,14 @@ type MCP struct {
 	Enable bool `json:"enable" env:"ENABLE"`
 }
 
+type Redis struct {
+	Enable   bool   `json:"enable" env:"ENABLE"`
+	Host     string `json:"host" env:"HOST"`
+	Port     int    `json:"port" env:"PORT"`
+	Password string `json:"password" env:"PASSWORD"`
+	DB       int    `json:"db" env:"DB"`
+}
+
 type Config struct {
 	Force                 bool        `json:"force" env:"FORCE"`
 	SiteURL               string      `json:"site_url" env:"SITE_URL"`
@@ -136,6 +144,7 @@ type Config struct {
 	FTP                   FTP         `json:"ftp" envPrefix:"FTP_"`
 	SFTP                  SFTP        `json:"sftp" envPrefix:"SFTP_"`
 	MCP                   MCP         `json:"mcp" envPrefix:"MCP_"`
+	Redis                 Redis       `json:"redis" envPrefix:"REDIS_"`
 	LastLaunchedVersion   string      `json:"last_launched_version"`
 	ProxyAddress          string      `json:"proxy_address" env:"PROXY_ADDRESS"`
 }
@@ -251,6 +260,13 @@ func DefaultConfig(dataDir string) *Config {
 		},
 		MCP: MCP{
 			Enable: false,
+		},
+		Redis: Redis{
+			Enable:   false,
+			Host:     "localhost",
+			Port:     6379,
+			Password: "",
+			DB:       0,
 		},
 		LastLaunchedVersion: "",
 		ProxyAddress:        "",
