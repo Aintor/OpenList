@@ -4,8 +4,8 @@ builtAt="$(date +'%F %T %z')"
 gitAuthor="The OpenList Projects Contributors <noreply@openlist.team>"
 gitCommit=$(git log --pretty=format:"%h" -1)
 
-# Set frontend repository, default to OpenListTeam/OpenList-Frontend
-frontendRepo="${FRONTEND_REPO:-OpenListTeam/OpenList-Frontend}"
+# Set frontend repository, default to Aintor/OpenList-Modern-UI
+frontendRepo="${FRONTEND_REPO:-Aintor/OpenList-Modern-UI}"
 
 githubAuthArgs=""
 if [ -n "$GITHUB_TOKEN" ]; then
@@ -30,7 +30,7 @@ else
   version=$(git describe --abbrev=0 --tags 2>/dev/null || echo "$gitCommit")
   webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/$frontendRepo/releases/latest\"" 2>/dev/null | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || echo "")
   if [ -z "$webVersion" ]; then
-    webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/latest\"" 2>/dev/null | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || echo "rolling")
+    webVersion=$(eval "curl -fsSL --max-time 2 $githubAuthArgs \"https://api.github.com/repos/Aintor/OpenList-Modern-UI/releases/latest\"" 2>/dev/null | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g' || echo "rolling")
   fi
 fi
 
@@ -102,13 +102,12 @@ AssertStaticBinary() {
 FetchWebRolling() {
   pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/tags/rolling\"" 2>/dev/null || echo "")
   if [ -z "$pre_release_json" ] || echo "$pre_release_json" | grep -q "Not Found"; then
-    echo "Warning: Failed to fetch rolling release from $frontendRepo, falling back to OpenListTeam/OpenList-Frontend"
-    pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/tags/rolling\"")
+    echo "Warning: Failed to fetch rolling release from $frontendRepo, falling back to Aintor/OpenList-Modern-UI"
+    pre_release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/Aintor/OpenList-Modern-UI/releases/tags/rolling\"" 2>/dev/null || echo "")
   fi
   pre_release_assets=$(echo "$pre_release_json" | jq -r '.assets[].browser_download_url')
   
-  # There is no lite for rolling
-  pre_release_tar_url=$(echo "$pre_release_assets" | grep "openlist-frontend-dist" | grep -v "lite" | grep "\.tar\.gz$")
+  pre_release_tar_url=$(echo "$pre_release_assets" | grep -E "(dist|openlist-frontend-dist)" | grep "\.tar\.gz$" | head -n 1)
 
   curl -fsSL "$pre_release_tar_url" -o dist.tar.gz
   rm -rf public/dist && mkdir -p public/dist
@@ -119,15 +118,17 @@ FetchWebRolling() {
 FetchWebRelease() {
   release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/$frontendRepo/releases/latest\"" 2>/dev/null || echo "")
   if [ -z "$release_json" ] || echo "$release_json" | grep -q "Not Found"; then
-    echo "Warning: Failed to fetch latest release from $frontendRepo, falling back to OpenListTeam/OpenList-Frontend"
-    release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/OpenListTeam/OpenList-Frontend/releases/latest\"")
+    echo "Warning: Failed to fetch latest release from $frontendRepo, falling back to Aintor/OpenList-Modern-UI"
+    release_json=$(eval "curl -fsSL --max-time 2 $githubAuthArgs -H \"Accept: application/vnd.github.v3+json\" \"https://api.github.com/repos/Aintor/OpenList-Modern-UI/releases/latest\"" 2>/dev/null || echo "")
   fi
   release_assets=$(echo "$release_json" | jq -r '.assets[].browser_download_url')
   
   if [ "$useLite" = true ]; then
-    release_tar_url=$(echo "$release_assets" | grep "openlist-frontend-dist-lite" | grep "\.tar\.gz$")
-  else
-    release_tar_url=$(echo "$release_assets" | grep "openlist-frontend-dist" | grep -v "lite" | grep "\.tar\.gz$")
+    release_tar_url=$(echo "$release_assets" | grep "lite" | grep "\.tar\.gz$" | head -n 1)
+  fi
+
+  if [ -z "$release_tar_url" ]; then
+    release_tar_url=$(echo "$release_assets" | grep -E "(dist|openlist-frontend-dist)" | grep "\.tar\.gz$" | head -n 1)
   fi
   
   curl -fsSL "$release_tar_url" -o dist.tar.gz
