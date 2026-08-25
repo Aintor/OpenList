@@ -19,15 +19,7 @@ import (
 
 func initSettings() {
 	initialSettingItems := InitialSettings()
-	isActive := func(key string) bool {
-		for _, item := range initialSettingItems {
-			if item.Key == key {
-				return true
-			}
-		}
-		return false
-	}
-	// check deprecated
+	// Load all existing settings from DB
 	settings, err := op.GetSettingItems()
 	if err != nil {
 		utils.Log.Fatalf("failed get settings: %+v", err)
@@ -41,12 +33,10 @@ func initSettings() {
 			}
 			continue
 		}
-		if !isActive(v.Key) && v.Flag != model.DEPRECATED {
-			v.Flag = model.DEPRECATED
-			err = op.SaveSettingItem(&v)
-			if err != nil {
-				utils.Log.Fatalf("failed save setting: %+v", err)
-			}
+		// If an existing setting was previously marked DEPRECATED by legacy versions, restore it to PUBLIC
+		if v.Flag == model.DEPRECATED {
+			v.Flag = model.PUBLIC
+			_ = op.SaveSettingItem(&v)
 		}
 		settingMap[v.Key] = &v
 	}
@@ -252,6 +242,15 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.StreamMaxServerUploadSpeed, Value: "-1", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PRIVATE},
 		{Key: conf.MultipartEnabled, Value: "true", Type: conf.TypeBool, Group: model.TRAFFIC, Flag: model.PUBLIC},
 		{Key: conf.MultipartChunkSize, Value: "10", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC, Help: `chunk size of multipart upload in MB (positive integer), keep it under your CDN's request body limit; each active session buffers up to 8 chunks on the server's disk`},
+		{Key: "upload_task_threads_num", Value: "5", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "download_task_threads_num", Value: "5", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "client_download_threads_num", Value: "5", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "client_upload_threads_num", Value: "5", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "rapid_upload_enabled", Value: "true", Type: conf.TypeBool, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "enable_cdn_upload_fallback", Value: "false", Type: conf.TypeBool, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "direct_fallback_min_size", Value: "5", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "direct_fallback_min_speed", Value: "100", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC},
+		{Key: "direct_fallback_duration", Value: "5", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC},
 	}
 	additionalSettingItems := tool.Tools.Items()
 	// 固定顺序
