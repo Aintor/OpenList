@@ -24,7 +24,7 @@ type Addition struct {
 	EnableDirectUpload       bool   `json:"enable_direct_upload" default:"false"`
 	DirectUploadHost         string `json:"direct_upload_host" required:"false"`
 	UserAgent                string `json:"user_agent" required:"false" default:"" help:"Custom User-Agent for S3 requests."`
-	Thumbnail                bool   `json:"thumbnail" default:"false" help:"Enable thumbnail generation"`
+	Thumbnail                bool   `json:"thumbnail" default:"false" help:"Enable thumbnail and audio cover generation (Audio cover extraction requires HTTP Range support)"`
 	ThumbQueryKey            string `json:"thumb_query_key" default:"x-oss-process" help:"Query parameter key for thumbnail processing"`
 	ThumbQueryValue          string `json:"thumb_query_value" default:"video/snapshot,t_1000,f_jpg,w_300,h_200,m_fast" help:"Query parameter value for video thumbnail"`
 	ImageThumbValue          string `json:"image_thumb_value" default:"image/resize,w_300/format,jpg" help:"Query parameter value for image thumbnail"`
