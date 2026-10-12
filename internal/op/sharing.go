@@ -102,7 +102,16 @@ func GetSharingUnwrapPath(sharing *model.Sharing, path string) (unwrapPath strin
 		}
 	}
 	if len(sharing.Files) == 1 {
-		return stdpath.Join(sharing.Files[0], path), nil
+		cleanPath := utils.FixAndCleanPath(path)
+		if cleanPath == "/" {
+			return sharing.Files[0], nil
+		}
+		cleanTrimmed := cleanPath[1:]
+		child, rest, _ := strings.Cut(cleanTrimmed, "/")
+		if child == stdpath.Base(sharing.Files[0]) {
+			return stdpath.Join(sharing.Files[0], rest), nil
+		}
+		return stdpath.Join(sharing.Files[0], cleanPath), nil
 	}
 	path = utils.FixAndCleanPath(path)[1:]
 	if len(path) == 0 {

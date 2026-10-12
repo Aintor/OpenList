@@ -37,7 +37,11 @@ func SharingGet(c *gin.Context, req *FsGetReq) {
 	_ = countAccess(c.ClientIP(), s)
 	url := ""
 	if !obj.IsDir() {
-		fakePath := fmt.Sprintf("/%s/%s", sid, path)
+		filePath := path
+		if filePath == "" || filePath == "/" {
+			filePath = obj.GetName()
+		}
+		fakePath := fmt.Sprintf("/%s/%s", sid, filePath)
 		url = fmt.Sprintf("%s/sd%s", common.GetApiUrl(c), utils.EncodePath(fakePath, true))
 		if s.Pwd != "" {
 			url += "?pwd=" + s.Pwd
@@ -132,7 +136,11 @@ func SharingArchiveMeta(c *gin.Context, req *ArchiveMetaReq) {
 		return
 	}
 	_ = countAccess(c.ClientIP(), s)
-	fakePath := fmt.Sprintf("/%s/%s", sid, path)
+	filePath := path
+	if (filePath == "" || filePath == "/") && len(s.Files) == 1 {
+		filePath = stdpath.Base(s.Files[0])
+	}
+	fakePath := fmt.Sprintf("/%s/%s", sid, filePath)
 	url := fmt.Sprintf("%s/sad%s", common.GetApiUrl(c), utils.EncodePath(fakePath, true))
 	if s.Pwd != "" {
 		url += "?pwd=" + s.Pwd

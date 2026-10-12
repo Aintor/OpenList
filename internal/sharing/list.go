@@ -23,6 +23,28 @@ func list(ctx context.Context, sid, path string, args model.SharingListArgs) (*m
 		return sharing, nil, errors.WithStack(errs.WrongShareCode)
 	}
 	path = utils.FixAndCleanPath(path)
+	if len(sharing.Files) == 1 && path == "/" {
+		f := sharing.Files[0]
+		var targetObj model.Obj
+		if f != "/" {
+			virtualFiles := op.GetStorageVirtualFilesByPath(stdpath.Dir(f))
+			for _, vf := range virtualFiles {
+				if vf.GetName() == stdpath.Base(f) {
+					targetObj = vf
+					break
+				}
+			}
+		}
+		if targetObj == nil {
+			storage, actualPath, err := op.GetStorageAndActualPath(f)
+			if err == nil {
+				targetObj, _ = op.Get(ctx, storage, actualPath)
+			}
+		}
+		if targetObj != nil && !targetObj.IsDir() {
+			return sharing, []model.Obj{targetObj}, nil
+		}
+	}
 	if len(sharing.Files) == 1 || path != "/" {
 		unwrapPath, err := op.GetSharingUnwrapPath(sharing, path)
 		if err != nil {
