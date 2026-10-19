@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"mime"
 	"net/http"
 	stdpath "path"
 	"strconv"
@@ -105,6 +106,9 @@ func (d *AliyunOSS) List(ctx context.Context, dir model.Obj, args model.ListArgs
 				continue
 			}
 			name := stdpath.Base(o.Key)
+			if !args.S3ShowPlaceholder && (name == ".openlist" || name == ".alist" || (d.Placeholder != "" && name == d.Placeholder)) {
+				continue
+			}
 			file := &model.Object{
 				Path:     stdpath.Join(dirPath, name),
 				Name:     name,
@@ -314,8 +318,16 @@ func (d *AliyunOSS) GetDirectUploadInfo(ctx context.Context, _ string, dstDir mo
 	key := getKey(stdpath.Join(dstDir.GetPath(), fileName), false)
 	expireSeconds := int64(time.Hour * time.Duration(d.SignURLExpire) / time.Second)
 
+	contentType := mime.TypeByExtension(strings.ToLower(stdpath.Ext(fileName)))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	options := []oss.Option{
+		oss.ContentType(contentType),
+	}
+
 	// Primary Direct Upload: Direct connection to OSS source station
-	uploadURL, err := d.bucket.SignURL(key, oss.HTTPPut, expireSeconds)
+	uploadURL, err := d.bucket.SignURL(key, oss.HTTPPut, expireSeconds, options...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign direct upload URL: %w", err)
 	}
@@ -326,11 +338,14 @@ func (d *AliyunOSS) GetDirectUploadInfo(ctx context.Context, _ string, dstDir mo
 	res := &model.HttpDirectUploadInfo{
 		UploadURL: uploadURL,
 		Method:    "PUT",
+		Headers: map[string]string{
+			"Content-Type": contentType,
+		},
 	}
 
-	// Secondary Fallback Upload: If direct connection is slow, client directly switches to ESA / accelerated host
+	// Secondary Fallback Upload: If direct connection is slow or fails, client directly switches to ESA / accelerated host
 	if d.directUploadBucket != nil {
-		fallbackURL, err := d.directUploadBucket.SignURL(key, oss.HTTPPut, expireSeconds)
+		fallbackURL, err := d.directUploadBucket.SignURL(key, oss.HTTPPut, expireSeconds, options...)
 		if err == nil {
 			if parts := strings.SplitN(fallbackURL, "?", 2); len(parts) == 2 {
 				fallbackURL = strings.ReplaceAll(parts[0], "%2F", "/") + "?" + parts[1]

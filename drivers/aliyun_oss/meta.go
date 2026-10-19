@@ -19,6 +19,7 @@ type Addition struct {
 	Thumbnail          bool   `json:"thumbnail" default:"false" help:"Enable thumbnail and video cover generation"`
 	ThumbQueryValue    string `json:"thumb_query_value" default:"video/snapshot,t_1000,f_jpg,w_300,h_200,m_fast" help:"x-oss-process parameter value for video thumbnail"`
 	ImageThumbValue    string `json:"image_thumb_value" default:"image/resize,w_300/format,jpg" help:"x-oss-process parameter value for image thumbnail"`
+	Placeholder        string `json:"placeholder" default:".openlist"`
 }
 
 func init() {
