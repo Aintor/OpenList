@@ -23,10 +23,12 @@ import (
 )
 
 type ArchiveMetaReq struct {
-	Path        string `json:"path" form:"path"`
-	Password    string `json:"password" form:"password"`
-	Refresh     bool   `json:"refresh" form:"refresh"`
-	ArchivePass string `json:"archive_pass" form:"archive_pass"`
+	Path            string `json:"path" form:"path"`
+	SrcDir          string `json:"src_dir" form:"src_dir"`
+	Password        string `json:"password" form:"password"`
+	Refresh         bool   `json:"refresh" form:"refresh"`
+	ArchivePass     string `json:"archive_pass" form:"archive_pass"`
+	ArchivePassword string `json:"archive_password" form:"archive_password"`
 }
 
 type ArchiveMetaResp struct {
@@ -76,6 +78,12 @@ func FsArchiveMetaSplit(c *gin.Context) {
 	if err := c.ShouldBind(&req); err != nil {
 		common.ErrorResp(c, err, 400)
 		return
+	}
+	if req.Path == "" && req.SrcDir != "" {
+		req.Path = req.SrcDir
+	}
+	if req.ArchivePass == "" && req.ArchivePassword != "" {
+		req.ArchivePass = req.ArchivePassword
 	}
 	if strings.HasPrefix(req.Path, "/@s") {
 		req.Path = strings.TrimPrefix(req.Path, "/@s")
@@ -159,6 +167,12 @@ func FsArchiveListSplit(c *gin.Context) {
 		common.ErrorResp(c, err, 400)
 		return
 	}
+	if req.Path == "" && req.SrcDir != "" {
+		req.Path = req.SrcDir
+	}
+	if req.ArchivePass == "" && req.ArchivePassword != "" {
+		req.ArchivePass = req.ArchivePassword
+	}
 	req.Validate()
 	if strings.HasPrefix(req.Path, "/@s") {
 		req.Path = strings.TrimPrefix(req.Path, "/@s")
@@ -225,14 +239,15 @@ func FsArchiveList(c *gin.Context, req *ArchiveListReq, user *model.User) {
 }
 
 type ArchiveDecompressReq struct {
-	SrcDir        string   `json:"src_dir" form:"src_dir"`
-	DstDir        string   `json:"dst_dir" form:"dst_dir"`
-	Names         []string `json:"name" form:"name"`
-	ArchivePass   string   `json:"archive_pass" form:"archive_pass"`
-	InnerPath     string   `json:"inner_path" form:"inner_path"`
-	CacheFull     bool     `json:"cache_full" form:"cache_full"`
-	PutIntoNewDir bool     `json:"put_into_new_dir" form:"put_into_new_dir"`
-	Overwrite     bool     `json:"overwrite" form:"overwrite"`
+	SrcDir          string   `json:"src_dir" form:"src_dir"`
+	DstDir          string   `json:"dst_dir" form:"dst_dir"`
+	Names           []string `json:"name" form:"name"`
+	ArchivePass     string   `json:"archive_pass" form:"archive_pass"`
+	ArchivePassword string   `json:"archive_password" form:"archive_password"`
+	InnerPath       string   `json:"inner_path" form:"inner_path"`
+	CacheFull       bool     `json:"cache_full" form:"cache_full"`
+	PutIntoNewDir   bool     `json:"put_into_new_dir" form:"put_into_new_dir"`
+	Overwrite       bool     `json:"overwrite" form:"overwrite"`
 }
 
 func FsArchiveDecompress(c *gin.Context) {
@@ -240,6 +255,16 @@ func FsArchiveDecompress(c *gin.Context) {
 	if err := c.ShouldBind(&req); err != nil {
 		common.ErrorResp(c, err, 400)
 		return
+	}
+	if req.ArchivePass == "" && req.ArchivePassword != "" {
+		req.ArchivePass = req.ArchivePassword
+	}
+	if len(req.Names) == 0 && req.SrcDir != "" {
+		ext := utils.Ext(req.SrcDir)
+		if ext != "" {
+			req.Names = []string{stdpath.Base(req.SrcDir)}
+			req.SrcDir = stdpath.Dir(req.SrcDir)
+		}
 	}
 	user := c.Request.Context().Value(conf.UserKey).(*model.User)
 	if !user.CanDecompress() {
