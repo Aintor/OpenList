@@ -134,15 +134,18 @@ func (d *AliyunOSS) Link(ctx context.Context, file model.Obj, args model.LinkArg
 	expireSeconds := int64(time.Hour * time.Duration(d.SignURLExpire) / time.Second)
 
 	var options []oss.Option
-	if args.Type == "thumb" && (d.ThumbQueryValue != "" || d.ImageThumbValue != "") {
+	if args.Type == "thumb" && (d.ThumbQueryValue != "" || d.ImageThumbValue != "" || d.PdfThumbValue != "") {
 		ext := strings.ToLower(utils.Ext(fileName))
 		isImg := utils.SliceContains([]string{"jpg", "jpeg", "png", "gif", "webp", "bmp"}, ext)
 		isVid := utils.SliceContains([]string{"mp4", "mkv", "avi", "mov", "flv", "webm", "3gp", "wmv"}, ext)
+		isPdf := ext == "pdf"
 		var val string
 		if isImg {
 			val = d.ImageThumbValue
 		} else if isVid {
 			val = d.ThumbQueryValue
+		} else if isPdf {
+			val = d.PdfThumbValue
 		}
 		if val != "" {
 			options = append(options, oss.Process(val))

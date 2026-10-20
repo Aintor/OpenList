@@ -50,7 +50,8 @@ func (d *AliyunOSS) wrapWithThumb(ctx context.Context, dirPath string, name stri
 		ext := strings.ToLower(utils.Ext(name))
 		isImg := utils.SliceContains([]string{"jpg", "jpeg", "png", "gif", "webp", "bmp"}, ext)
 		isVid := utils.SliceContains([]string{"mp4", "mkv", "avi", "mov", "flv", "webm", "3gp", "wmv"}, ext)
-		if isImg || isVid {
+		isPdf := ext == "pdf"
+		if isImg || isVid || isPdf {
 			thumbUrl := common.GetApiUrl(ctx) + path.Join("/d", dirPath, name)
 			thumbUrl = utils.EncodePath(thumbUrl, true)
 			thumbUrl += "?type=thumb&sign=" + sign.Sign(path.Join(dirPath, name))

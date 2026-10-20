@@ -42,6 +42,7 @@ func TestLinkAndThumbnail(t *testing.T) {
 			Thumbnail:       true,
 			ThumbQueryValue: "video/snapshot,t_1000,f_jpg,w_300,h_200,m_fast",
 			ImageThumbValue: "image/resize,w_300/format,jpg",
+			PdfThumbValue:   "doc/snapshot,target_jpg,source_pdf,page_1/image/resize,w_300,h_200,m_lfit",
 		},
 	}
 	err := drv.Init(nil)
@@ -70,6 +71,18 @@ func TestLinkAndThumbnail(t *testing.T) {
 	assert.Contains(t, imgThumbLink.URL, "x-oss-process=image%2Fresize")
 	assert.Contains(t, imgThumbLink.URL, "OSSAccessKeyId=test_ak")
 	assert.Contains(t, imgThumbLink.URL, "Signature=")
+
+	// Test PDF link with thumb
+	pdfObj := &model.Object{
+		Path: "/test/document.pdf",
+		Name: "document.pdf",
+	}
+	pdfThumbLink, err := drv.Link(nil, pdfObj, model.LinkArgs{Type: "thumb"})
+	assert.NoError(t, err)
+	assert.Contains(t, pdfThumbLink.URL, "https://cdn.example.com/test/document.pdf?")
+	assert.Contains(t, pdfThumbLink.URL, "x-oss-process=doc%2Fsnapshot")
+	assert.Contains(t, pdfThumbLink.URL, "OSSAccessKeyId=test_ak")
+	assert.Contains(t, pdfThumbLink.URL, "Signature=")
 
 	// Test normal link
 	normalLink, err := drv.Link(nil, vidObj, model.LinkArgs{})
