@@ -5,6 +5,7 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -86,6 +87,49 @@ func TestLinkAndThumbnail(t *testing.T) {
 	assert.Equal(t, "PUT", uploadInfo.Method)
 	assert.Contains(t, uploadInfo.UploadURL, "oss-cn-hangzhou.aliyuncs.com")
 	assert.Contains(t, uploadInfo.FallbackURL, "https://cdn.example.com")
-	assert.Equal(t, "PUT", uploadInfo.FallbackMethod)
+	// Test small file (< 20MB) returns single PUT
+	smallUploadAny, err := drv.GetDirectUploadInfo(nil, "", vidObj, "small.mp4", 10*1024*1024)
+	assert.NoError(t, err)
+	smallUpload := smallUploadAny.(*model.HttpDirectUploadInfo)
+	assert.Empty(t, smallUpload.UploadID)
+	assert.Empty(t, smallUpload.Parts)
+	assert.NotEmpty(t, smallUpload.UploadURL)
+	assert.NotEmpty(t, smallUpload.FallbackURL)
+}
+
+func TestMultipartDirectUploadSigning(t *testing.T) {
+	drv := &AliyunOSS{
+		Addition: Addition{
+			Bucket:          "my-bucket",
+			Endpoint:        "oss-cn-hangzhou.aliyuncs.com",
+			AccessKeyID:     "test_ak",
+			SecretAccessKey: "test_sk",
+			CustomHost:      "https://cdn.example.com",
+			SignURLExpire:   4,
+		},
+	}
+	_ = drv.Init(nil)
+
+	// Verify part URL signing with query parameters and ContentType
+	u, err := drv.bucket.SignURL("large.zip", oss.HTTPPut, 3600,
+		oss.ContentType("application/octet-stream"),
+		oss.AddParam("partNumber", "1"),
+		oss.AddParam("uploadId", "test-upload-id"),
+	)
+	assert.NoError(t, err)
+	assert.Contains(t, u, "partNumber=1")
+	assert.Contains(t, u, "uploadId=test-upload-id")
+	assert.Contains(t, u, "Signature=")
+
+	// Verify fallback URL signing
+	fallbackURL, err := drv.directUploadBucket.SignURL("large.zip", oss.HTTPPut, 3600,
+		oss.ContentType("application/octet-stream"),
+		oss.AddParam("partNumber", "2"),
+		oss.AddParam("uploadId", "test-upload-id"),
+	)
+	assert.NoError(t, err)
+	assert.Contains(t, fallbackURL, "https://cdn.example.com")
+	assert.Contains(t, fallbackURL, "partNumber=2")
+	assert.Contains(t, fallbackURL, "uploadId=test-upload-id")
 }
 

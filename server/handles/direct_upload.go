@@ -68,3 +68,72 @@ func FsGetDirectUploadInfo(c *gin.Context) {
 	}
 	common.SuccessResp(c, directUploadInfo)
 }
+
+type FsCompleteDirectUploadReq struct {
+	Path     string                   `json:"path" form:"path"`
+	FileName string                   `json:"file_name" form:"file_name"`
+	UploadID string                   `json:"upload_id" form:"upload_id"`
+	Parts    []model.DirectUploadPart `json:"parts" form:"parts"`
+}
+
+type FsAbortDirectUploadReq struct {
+	Path     string `json:"path" form:"path"`
+	FileName string `json:"file_name" form:"file_name"`
+	UploadID string `json:"upload_id" form:"upload_id"`
+}
+
+func FsCompleteDirectUpload(c *gin.Context) {
+	var req FsCompleteDirectUploadReq
+	if err := c.ShouldBind(&req); err != nil {
+		common.ErrorResp(c, err, 400)
+		return
+	}
+	path, err := url.PathUnescape(req.Path)
+	if err != nil {
+		common.ErrorResp(c, err, 400)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	path, err = user.JoinPath(path)
+	if err != nil {
+		common.ErrorResp(c, err, 403)
+		return
+	}
+	if err := checkRelativePath(req.FileName); err != nil {
+		common.ErrorResp(c, err, 403)
+		return
+	}
+	if err := fs.CompleteDirectUpload(c.Request.Context(), path, req.FileName, req.UploadID, req.Parts); err != nil {
+		common.ErrorResp(c, err, 500)
+		return
+	}
+	common.SuccessResp(c)
+}
+
+func FsAbortDirectUpload(c *gin.Context) {
+	var req FsAbortDirectUploadReq
+	if err := c.ShouldBind(&req); err != nil {
+		common.ErrorResp(c, err, 400)
+		return
+	}
+	path, err := url.PathUnescape(req.Path)
+	if err != nil {
+		common.ErrorResp(c, err, 400)
+		return
+	}
+	user := c.Request.Context().Value(conf.UserKey).(*model.User)
+	path, err = user.JoinPath(path)
+	if err != nil {
+		common.ErrorResp(c, err, 403)
+		return
+	}
+	if err := checkRelativePath(req.FileName); err != nil {
+		common.ErrorResp(c, err, 403)
+		return
+	}
+	if err := fs.AbortDirectUpload(c.Request.Context(), path, req.FileName, req.UploadID); err != nil {
+		common.ErrorResp(c, err, 500)
+		return
+	}
+	common.SuccessResp(c)
+}

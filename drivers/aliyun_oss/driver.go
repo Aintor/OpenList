@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	stdpath "path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -311,7 +312,13 @@ func (d *AliyunOSS) GetDirectUploadTools() []string {
 	return []string{"HttpDirect"}
 }
 
-func (d *AliyunOSS) GetDirectUploadInfo(ctx context.Context, _ string, dstDir model.Obj, fileName string, _ int64) (any, error) {
+const (
+	directMultipartThreshold = 20 * 1024 * 1024 // 20MB
+	minDirectChunkSize       = 10 * 1024 * 1024 // 10MB
+	maxDirectMultipartParts  = 500
+)
+
+func (d *AliyunOSS) GetDirectUploadInfo(ctx context.Context, _ string, dstDir model.Obj, fileName string, fileSize int64) (any, error) {
 	if !d.EnableDirectUpload {
 		return nil, errs.NotImplement
 	}
@@ -322,6 +329,77 @@ func (d *AliyunOSS) GetDirectUploadInfo(ctx context.Context, _ string, dstDir mo
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
+
+	// For large files (> 20MB), use OSS Native Multipart Upload
+	if fileSize > directMultipartThreshold {
+		chunkSize := int64(minDirectChunkSize)
+		if (fileSize+chunkSize-1)/chunkSize > maxDirectMultipartParts {
+			chunkSize = (fileSize + maxDirectMultipartParts - 1) / maxDirectMultipartParts
+		}
+		totalParts := int((fileSize + chunkSize - 1) / chunkSize)
+
+		imur, err := d.bucket.InitiateMultipartUpload(key, oss.ContentType(contentType))
+		if err != nil {
+			return nil, fmt.Errorf("failed to initiate multipart upload: %w", err)
+		}
+
+		parts := make([]model.MultipartDirectUploadPart, 0, totalParts)
+		partContentType := "application/octet-stream"
+		for i := 1; i <= totalParts; i++ {
+			partNumberStr := strconv.Itoa(i)
+			options := []oss.Option{
+				oss.ContentType(partContentType),
+				oss.AddParam("partNumber", partNumberStr),
+				oss.AddParam("uploadId", imur.UploadID),
+			}
+			partUploadURL, err := d.bucket.SignURL(key, oss.HTTPPut, expireSeconds, options...)
+			if err != nil {
+				_ = d.bucket.AbortMultipartUpload(imur)
+				return nil, fmt.Errorf("failed to sign multipart upload part %d URL: %w", i, err)
+			}
+			if p := strings.SplitN(partUploadURL, "?", 2); len(p) == 2 {
+				partUploadURL = strings.ReplaceAll(p[0], "%2F", "/") + "?" + p[1]
+			}
+
+			partFallbackURL := ""
+			if d.directUploadBucket != nil {
+				fallbackURL, err := d.directUploadBucket.SignURL(key, oss.HTTPPut, expireSeconds, options...)
+				if err == nil {
+					if p := strings.SplitN(fallbackURL, "?", 2); len(p) == 2 {
+						fallbackURL = strings.ReplaceAll(p[0], "%2F", "/") + "?" + p[1]
+					}
+					partFallbackURL = fallbackURL
+				}
+			}
+
+			parts = append(parts, model.MultipartDirectUploadPart{
+				PartNumber:  i,
+				UploadURL:   partUploadURL,
+				FallbackURL: partFallbackURL,
+			})
+		}
+
+		firstUploadURL := ""
+		firstFallbackURL := ""
+		if len(parts) > 0 {
+			firstUploadURL = parts[0].UploadURL
+			firstFallbackURL = parts[0].FallbackURL
+		}
+
+		return &model.HttpDirectUploadInfo{
+			UploadURL:      firstUploadURL,
+			FallbackURL:    firstFallbackURL,
+			Method:         "PUT",
+			FallbackMethod: "PUT",
+			ChunkSize:      chunkSize,
+			UploadID:       imur.UploadID,
+			Parts:          parts,
+			Headers: map[string]string{
+				"Content-Type": partContentType,
+			},
+		}, nil
+	}
+
 	options := []oss.Option{
 		oss.ContentType(contentType),
 	}
@@ -358,6 +436,39 @@ func (d *AliyunOSS) GetDirectUploadInfo(ctx context.Context, _ string, dstDir mo
 	return res, nil
 }
 
+func (d *AliyunOSS) CompleteDirectUpload(ctx context.Context, dstDir model.Obj, fileName string, uploadID string, parts []model.DirectUploadPart) error {
+	key := getKey(stdpath.Join(dstDir.GetPath(), fileName), false)
+	imur := oss.InitiateMultipartUploadResult{
+		Bucket:   d.Bucket,
+		Key:      key,
+		UploadID: uploadID,
+	}
+	ossParts := make([]oss.UploadPart, 0, len(parts))
+	for _, p := range parts {
+		cleanETag := strings.Trim(p.ETag, "\"")
+		ossParts = append(ossParts, oss.UploadPart{
+			PartNumber: p.PartNumber,
+			ETag:       fmt.Sprintf("\"%s\"", cleanETag),
+		})
+	}
+	sort.Slice(ossParts, func(i, j int) bool {
+		return ossParts[i].PartNumber < ossParts[j].PartNumber
+	})
+	_, err := d.bucket.CompleteMultipartUpload(imur, ossParts)
+	return err
+}
+
+func (d *AliyunOSS) AbortDirectUpload(ctx context.Context, dstDir model.Obj, fileName string, uploadID string) error {
+	key := getKey(stdpath.Join(dstDir.GetPath(), fileName), false)
+	imur := oss.InitiateMultipartUploadResult{
+		Bucket:   d.Bucket,
+		Key:      key,
+		UploadID: uploadID,
+	}
+	return d.bucket.AbortMultipartUpload(imur)
+}
+
 var _ driver.Driver = (*AliyunOSS)(nil)
 var _ driver.Getter = (*AliyunOSS)(nil)
 var _ driver.DirectUploader = (*AliyunOSS)(nil)
+var _ driver.DirectMultipartUploader = (*AliyunOSS)(nil)

@@ -206,3 +206,19 @@ func GetDirectUploadInfo(ctx context.Context, tool, path, dstName string, fileSi
 	}
 	return info, err
 }
+
+func CompleteDirectUpload(ctx context.Context, path, dstName string, uploadID string, parts []model.DirectUploadPart) error {
+	err := completeDirectUpload(ctx, path, dstName, uploadID, parts)
+	if err != nil {
+		log.Errorf("failed complete direct upload for %s/%s (uploadID: %s): %+v", path, dstName, uploadID, err)
+	}
+	return err
+}
+
+func AbortDirectUpload(ctx context.Context, path, dstName string, uploadID string) error {
+	err := abortDirectUpload(ctx, path, dstName, uploadID)
+	if err != nil {
+		log.Errorf("failed abort direct upload for %s/%s (uploadID: %s): %+v", path, dstName, uploadID, err)
+	}
+	return err
+}

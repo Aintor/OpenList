@@ -814,6 +814,47 @@ func GetDirectUploadInfo(ctx context.Context, tool string, storage driver.Driver
 	return info, nil
 }
 
+func CompleteDirectUpload(ctx context.Context, storage driver.Driver, dstDirPath, dstName string, uploadID string, parts []model.DirectUploadPart) error {
+	dmu, ok := storage.(driver.DirectMultipartUploader)
+	if !ok {
+		return errors.WithStack(errs.NotImplement)
+	}
+	if storage.Config().CheckStatus && storage.GetStorage().Status != WORK {
+		return errors.WithMessagef(errs.StorageNotInit, "storage status: %s", storage.GetStorage().Status)
+	}
+	dstDirPath = utils.FixAndCleanPath(dstDirPath)
+	dstDir, err := GetUnwrap(ctx, storage, dstDirPath)
+	if err != nil {
+		return errors.WithMessagef(err, "failed to get dir [%s]", dstDirPath)
+	}
+	err = dmu.CompleteDirectUpload(ctx, dstDir, dstName, uploadID, parts)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	Cache.DeleteDirectory(storage, dstDirPath)
+	Cache.linkCache.DeleteKey(stdpath.Join(Key(storage, dstDirPath), dstName))
+	if ctx.Value(conf.SkipHookKey) == nil && needHandleObjsUpdateHook() {
+		go objsUpdateHook(context.WithoutCancel(ctx), storage, dstDirPath, false)
+	}
+	return nil
+}
+
+func AbortDirectUpload(ctx context.Context, storage driver.Driver, dstDirPath, dstName string, uploadID string) error {
+	dmu, ok := storage.(driver.DirectMultipartUploader)
+	if !ok {
+		return errors.WithStack(errs.NotImplement)
+	}
+	if storage.Config().CheckStatus && storage.GetStorage().Status != WORK {
+		return errors.WithMessagef(errs.StorageNotInit, "storage status: %s", storage.GetStorage().Status)
+	}
+	dstDirPath = utils.FixAndCleanPath(dstDirPath)
+	dstDir, err := GetUnwrap(ctx, storage, dstDirPath)
+	if err != nil {
+		return errors.WithMessagef(err, "failed to get dir [%s]", dstDirPath)
+	}
+	return dmu.AbortDirectUpload(ctx, dstDir, dstName, uploadID)
+}
+
 func objsUpdateHook(ctx context.Context, storage driver.Driver, dirPath string, recursive bool) {
 	files, err := List(ctx, storage, dirPath, model.ListArgs{SkipHook: true})
 	if err != nil {
